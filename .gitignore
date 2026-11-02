@@ -1,5 +1,22 @@
-venv/
-__pycache__/
-*.pkl
-*.pyc
+# Secrets and environments
 .env
+.envrc
+.venv
+venv/
+env/
+ENV/
+
+# Python
+__pycache__/
+*.py[codz]
+*$py.class
+*.egg-info/
+build/
+dist/
+
+# Tools and caches
+.ipynb_checkpoints
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.log

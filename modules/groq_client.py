@@ -15,10 +15,16 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dotenv import load_dotenv
 from groq import Groq
 
 load_dotenv()
+
+# llama-3.1-8b-instant was retired by Groq on 16 Aug 2026 (free/developer tier).
+# Groq's recommended replacement is openai/gpt-oss-20b. Override without
+# touching the code by setting GROQ_LLM_MODEL in .env.
+LLM_MODEL = os.getenv("GROQ_LLM_MODEL", "openai/gpt-oss-20b")
 
 
 def get_groq_client(api_key: str | None = None) -> Groq:
@@ -50,6 +56,24 @@ def transcribe_audio(client: Groq, audio_path: str, language: str = "en") -> dic
 
 
 # ── Content + Fluency Analysis ────────────────────────────────────────────────
+
+def _parse_json(raw: str | None) -> dict:
+    """Parse the model reply as JSON; tolerate extra text around the object."""
+    if not raw:
+        return {}
+    candidates = [raw]
+    match = re.search(r"\{.*\}", raw, re.DOTALL)
+    if match:
+        candidates.append(match.group(0))
+    for text in candidates:
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, dict):
+            return data
+    return {}
+
 
 _ANALYSIS_PROMPT = """\
 You are an expert interview coach evaluating a job candidate's interview response.
@@ -112,15 +136,17 @@ def analyze_content(
     )
 
     response = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
+        model=LLM_MODEL,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3,
-        max_tokens=1024,
+        max_tokens=4096,   # reasoning models spend part of this budget thinking
         response_format={"type": "json_object"},
     )
 
-    raw  = response.choices[0].message.content
-    data = json.loads(raw)
+    data = _parse_json(response.choices[0].message.content)
+    if not data:
+        data = {"assessment": "AI feedback was unavailable for this recording "
+                              "(the model returned an unreadable reply)."}
 
     for key in ("strengths", "improvements", "recommendations"):
         if key not in data or not isinstance(data[key], list):

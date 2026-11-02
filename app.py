@@ -7,7 +7,7 @@ FINAL SCORE STRUCTURE:
   Speaking Speed     /20  WPM calculation
   Facial Confidence  /25  local sklearn model (FER2013 + MobileNetV2)
   Voice Confidence   /20  local sklearn model (RAVDESS)
-  Overall Fluency    /10  Groq LLaMA 3
+  Overall Fluency    /10  Groq LLM
   ──────────────────────
   TOTAL             /100
 """
@@ -294,6 +294,7 @@ if uploaded_file:
 if analyze_clicked and uploaded_file:
     tmp_dir        = tempfile.mkdtemp(prefix="interview_")
     tmp_video_path = os.path.join(tmp_dir, uploaded_file.name)
+    audio_path     = None   # tracked so the temp audio is always cleaned up
 
     try:
         with open(tmp_video_path, "wb") as fh:
@@ -338,7 +339,7 @@ if analyze_clicked and uploaded_file:
             st.write("🎥 Analyzing facial confidence ")
             video_analysis = analyze_video(tmp_video_path)
 
-            # Step 6: Fluency + content insights — Groq LLaMA 3
+            # Step 6: Fluency + content insights — Groq LLM
             st.write("🤖 Analyzing fluency & content ")
             content_analysis = analyze_content(client, transcript, duration)
 
@@ -362,6 +363,8 @@ if analyze_clicked and uploaded_file:
 
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
+        if audio_path and os.path.exists(audio_path):
+            os.unlink(audio_path)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -540,7 +543,7 @@ if "report" in st.session_state:
     # ── 5. Overall Fluency ────────────────────────────────────────────────────
     st.markdown(
         '<div class="section-hdr">📝 5. Overall Fluency /10 '
-        '<span class="api-badge">☁️ Groq LLaMA 3</span></div>',
+        '<span class="api-badge">☁️ Groq LLM</span></div>',
         unsafe_allow_html=True,
     )
 
@@ -571,7 +574,7 @@ if "report" in st.session_state:
     # ── AI Content Insights ───────────────────────────────────────────────────
     st.markdown(
         '<div class="section-hdr">🤖 AI Content Insights '
-        '<span class="api-badge">☁️ Groq LLaMA 3</span></div>',
+        '<span class="api-badge">☁️ Groq LLM</span></div>',
         unsafe_allow_html=True,
     )
 
@@ -622,7 +625,7 @@ elif not uploaded_file:
     <tr><td>⏱️ Speaking Speed</td><td style="color:#00C851;">/20 — WPM analysis</td></tr>
     <tr><td>🎥 Facial Confidence</td><td style="color:#00C851;">/25 — Local sklearn model</td></tr>
     <tr><td>🎵 Voice Confidence</td><td style="color:#00C851;">/20 — Local sklearn model</td></tr>
-    <tr><td>📝 Overall Fluency</td><td style="color:#2196F3;">/10 — Groq LLaMA 3</td></tr>
+    <tr><td>📝 Overall Fluency</td><td style="color:#2196F3;">/10 — Groq LLM</td></tr>
   </table>
 </div>
 """, unsafe_allow_html=True)

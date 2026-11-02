@@ -15,10 +15,9 @@ from __future__ import annotations
 import cv2
 import pickle
 import numpy as np
-from pathlib import Path
 
 # ── Model paths ───────────────────────────────────────────────────────────────
-_MODEL_DIR   = Path(__file__).resolve().parent.parent / "models"
+from modules.config import MODEL_DIR as _MODEL_DIR
 _FACE_MODEL  = _MODEL_DIR / "face_best_model.pkl"
 _FACE_SCALER = _MODEL_DIR / "face_scaler.pkl"
 _FACE_PCA    = _MODEL_DIR / "face_pca.pkl"
@@ -80,6 +79,9 @@ def _get_feature_extractor():
 def _preprocess_face(gray_crop: np.ndarray) -> np.ndarray:
     from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
     img_48  = cv2.resize(gray_crop.astype(np.uint8), (_IMG_SIZE, _IMG_SIZE))
+    # CLAHE contrast enhancement: the training script applies it to every image,
+    # so the app must too (training/train_face_model.py -> apply_clahe).
+    img_48  = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4)).apply(img_48)
     img_96  = cv2.resize(img_48, (_TARGET_SIZE, _TARGET_SIZE),
                          interpolation=cv2.INTER_CUBIC)
     img_rgb = cv2.cvtColor(img_96, cv2.COLOR_GRAY2RGB)

@@ -19,7 +19,7 @@ import numpy as np
 from pathlib import Path
 
 # ── Model paths ───────────────────────────────────────────────────────────────
-_MODEL_DIR    = Path(__file__).resolve().parent.parent / "models"
+from modules.config import MODEL_DIR as _MODEL_DIR
 _VOICE_MODEL  = _MODEL_DIR / "voice_best_model.pkl"
 _VOICE_SCALER = _MODEL_DIR / "voice_scaler.pkl"
 

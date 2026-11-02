@@ -15,10 +15,9 @@ import re
 import string
 import pickle
 import numpy as np
-from pathlib import Path
 
 # ── Model paths ───────────────────────────────────────────────────────────────
-_MODEL_DIR    = Path(__file__).resolve().parent.parent / "models"
+from modules.config import MODEL_DIR as _MODEL_DIR
 _FILLER_MODEL = _MODEL_DIR / "best_filler_model.pkl"
 
 # ── Filler word list (must match training exactly) ────────────────────────────
