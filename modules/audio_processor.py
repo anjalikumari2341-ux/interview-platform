@@ -23,7 +23,11 @@ from modules.config import MODEL_DIR as _MODEL_DIR
 _VOICE_MODEL  = _MODEL_DIR / "voice_best_model.pkl"
 _VOICE_SCALER = _MODEL_DIR / "voice_scaler.pkl"
 
-_VOICE_LABEL_NAMES = {0: "not_confident", 1: "neutral", 2: "confident"}
+# Label names depend on how many classes the saved model has:
+#   2 classes (current training script): 0 = not_confident, 1 = confident
+#   3 classes (older model):             0 = not_confident, 1 = neutral, 2 = confident
+_VOICE_LABELS_2 = {0: "not_confident", 1: "confident"}
+_VOICE_LABELS_3 = {0: "not_confident", 1: "neutral", 2: "confident"}
 
 # Audio config (must match training)
 _SAMPLE_RATE = 22050
@@ -155,16 +159,17 @@ def _extract_voice_features(audio_path: str) -> np.ndarray:
 def calculate_voice_score(prediction: str, confident_prob: float) -> int:
     """
     Score voice confidence out of 20.
-      confident                      → 20
-      neutral  (confident_prob≥0.6)  → 15
-      neutral  (confident_prob< 0.6) → 10
-      not_confident                  → 5
+      confident      (confident_prob >= 0.70) → 20
+      confident      (confident_prob <  0.70) → 15
+      not_confident  (confident_prob >= 0.35) → 10
+      not_confident  (confident_prob <  0.35) → 5
+    (An older 3-class model's "neutral" is scored 15 / 10 as before.)
     """
     if prediction == "confident":
-        return 20
+        return 20 if confident_prob >= 0.70 else 15
     if prediction == "neutral":
         return 15 if confident_prob >= 0.6 else 10
-    return 5
+    return 10 if confident_prob >= 0.35 else 5
 
 
 # ── Public inference function ─────────────────────────────────────────────────
@@ -189,9 +194,10 @@ def analyze_voice_confidence(audio_path: str) -> dict:
     features       = _extract_voice_features(audio_path)
     feat_sc        = scaler.transform(features.reshape(1, -1))
     probs          = model.predict_proba(feat_sc)[0]
+    label_names    = _VOICE_LABELS_2 if len(probs) == 2 else _VOICE_LABELS_3
     pred_id        = int(probs.argmax())
-    prediction     = _VOICE_LABEL_NAMES[pred_id]
-    confident_prob = float(probs[2]) if len(probs) > 2 else float(probs[pred_id])
+    prediction     = label_names[pred_id]
+    confident_prob = float(probs[-1])      # "confident" is always the last class
     voice_score    = calculate_voice_score(prediction, confident_prob)
 
     quality_map = {
@@ -204,7 +210,7 @@ def analyze_voice_confidence(audio_path: str) -> dict:
     return {
         "prediction":       prediction,
         "confidence_label": pred_id,
-        "probabilities":    {_VOICE_LABEL_NAMES[i]: round(float(p), 3)
+        "probabilities":    {label_names[i]: round(float(p), 3)
                              for i, p in enumerate(probs)},
         "confident_prob":   round(confident_prob, 3),
         "voice_score":      voice_score,

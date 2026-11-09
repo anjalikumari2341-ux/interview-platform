@@ -29,3 +29,6 @@ pillow>=10.0.0,<12.0
 python-dotenv>=1.0.0,<2.0
 gdown
 
+#AI interviewer
+edge-tts
+streamlit>=1.40
