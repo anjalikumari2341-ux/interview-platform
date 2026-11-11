@@ -42,16 +42,32 @@ def transcribe_audio(client: Groq, audio_path: str, language: str = "en") -> dic
     with open(audio_path, "rb") as fh:
         audio_bytes = fh.read()
 
-    result = client.audio.transcriptions.create(
-        file=(os.path.basename(audio_path), audio_bytes),
-        model="whisper-large-v3-turbo",
-        response_format="verbose_json",
-        language=language,
-    )
+    # Hindi: try the full Whisper large-v3 first (more accurate than the turbo version on Hindi),
+    # and fall back to turbo if that model is not available for this account.
+    models = (["whisper-large-v3", "whisper-large-v3-turbo"] if language == "hi"
+              else ["whisper-large-v3-turbo"])
+    last_exc = None
+    result = None
+    used = models[-1]
+    for model in models:
+        try:
+            result = client.audio.transcriptions.create(
+                file=(os.path.basename(audio_path), audio_bytes),
+                model=model,
+                response_format="verbose_json",
+                language=language,
+            )
+            used = model
+            break
+        except Exception as exc:          # model missing / rate limit -> try the next one
+            last_exc = exc
+    if result is None:
+        raise last_exc
 
     return {
         "text":     result.text,
         "duration": getattr(result, "duration", None),
+        "model":    used,
     }
 
 
@@ -111,9 +127,11 @@ def analyze_content(
     client:           Groq,
     transcript:       str,
     duration_seconds: float,
+    language:         str = "en",
 ) -> dict:
     """
     Ask Groq LLaMA 3 to evaluate interview content and fluency.
+    language: "en" (default) or "hi" - the text values are then written in Hindi.
 
     Returns
     -------
@@ -134,6 +152,15 @@ def analyze_content(
         duration=f"{mins}m {secs}s",
         transcript=transcript,
     )
+    # The transcript comes from automatic speech recognition: its spelling, punctuation and odd words
+    # are the recogniser's mistakes, not the speaker's, so they must not be criticised.
+    prompt += ("\n\nNOTE: the transcript is automatic speech-to-text output. Do NOT comment on spelling, "
+               "typing mistakes, punctuation or capitalisation, and do not treat misheard or odd words as the "
+               "speaker's errors. Judge the content, structure, clarity and delivery only.")
+    if language == "hi":
+        prompt += ("\n\nIMPORTANT: write every text value (assessment, strengths, improvements, "
+                   "recommendations, fluency_feedback) in Hindi using Devanagari script. Keep the JSON "
+                   "keys and the fluency_level value in English exactly as specified above.")
 
     response = client.chat.completions.create(
         model=LLM_MODEL,

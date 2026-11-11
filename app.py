@@ -27,6 +27,7 @@ from modules.audio_processor import (
     analyze_voice_confidence,
 )
 from modules.groq_client import analyze_content, get_groq_client, transcribe_audio
+from modules.ai_interviewer import analyze_filler_words_hi   # LANGUAGE: Hindi filler counter
 from modules.report_generator import compile_report, generate_text_report
 from modules.speech_analyzer import (
     analyze_filler_words,
@@ -272,6 +273,11 @@ st.markdown(
 )
 st.divider()
 
+# LANGUAGE: the language the interview was spoken in (used for transcription, fillers and AI feedback)
+lang_name = st.radio("🌐 Interview language", ["English", "Hindi (हिन्दी)"], horizontal=True,
+                     help="Choose the language spoken in the video before pressing Analyze.")
+lang = "hi" if lang_name.startswith("Hindi") else "en"
+
 uploaded_file = st.file_uploader(
     "📹 Upload your mock interview video",
     type=["mp4", "avi", "mov", "webm", "mkv", "m4v"],
@@ -311,12 +317,12 @@ if analyze_clicked and uploaded_file:
 
             st.write("📝 Transcribing with Groq Whisper…")
             client        = get_groq_client()
-            transcription = transcribe_audio(client, audio_path)
+            transcription = transcribe_audio(client, audio_path, language=lang)
             transcript    = transcription["text"]
 
             if not transcript.strip():
                 os.unlink(audio_path)
-                raise ValueError("No speech detected. Ensure clear English audio.")
+                raise ValueError("No speech detected. Check that the audio is clear and matches the language you chose.")
 
             # Step 3: Voice confidence — local model
             st.write("🎵 Analyzing voice confidence ")
@@ -325,7 +331,7 @@ if analyze_clicked and uploaded_file:
 
             # Step 4: Filler + speed — local model + WPM
             st.write("🔍 Analyzing filler words ")
-            filler_analysis = analyze_filler_words(transcript)
+            filler_analysis = (analyze_filler_words_hi if lang == "hi" else analyze_filler_words)(transcript)
             speed_analysis  = calculate_speech_speed(transcript, duration)
 
             # Score uses filler_ratio (word_count-based) per spec
@@ -341,7 +347,7 @@ if analyze_clicked and uploaded_file:
 
             # Step 6: Fluency + content insights — Groq LLM
             st.write("🤖 Analyzing fluency & content ")
-            content_analysis = analyze_content(client, transcript, duration)
+            content_analysis = analyze_content(client, transcript, duration, lang)
 
             report = compile_report(
                 transcript=transcript,
@@ -355,6 +361,7 @@ if analyze_clicked and uploaded_file:
                 speed_score=speed_score,
             )
             st.session_state["report"] = report
+            st.session_state["report_lang"] = lang
             status.update(label="✅ Analysis complete!", state="complete", expanded=False)
 
     except Exception as exc:
@@ -382,6 +389,9 @@ if "report" in st.session_state:
 
     st.divider()
     st.markdown("## 📊 Interview Analysis Results")
+    if st.session_state.get("report_lang") == "hi":
+        st.caption("Hindi interview: filler words use a Hindi word list. The speaking-speed targets and the "
+                   "voice model were designed for English, so treat those two scores as approximate.")
 
     # ── Overall score ─────────────────────────────────────────────────────────
     col_gauge, col_grade = st.columns([1, 1])

@@ -68,6 +68,7 @@ if S is None:
                "and you get a scored report at the end. (Audio only - no camera in this mode.)")
     c1, c2 = st.columns(2)
     with c1:
+        lang_name = st.radio("Interview language", list(ai.LANGUAGES), horizontal=True)
         role_choice = st.selectbox("Job role", ai.JOB_ROLES)
         custom_role = ""
         if role_choice == ai.OTHER_ROLE:
@@ -75,22 +76,24 @@ if S is None:
         level = st.selectbox("Your level", ai.LEVELS)
     with c2:
         total = st.radio("Number of questions", [3, 5, 7], horizontal=True, index=1)
-        voice_name = st.selectbox("Interviewer", list(ai.VOICES))
+        voices = ai.LANGUAGES[lang_name]["voices"]
+        voice_name = st.selectbox("Interviewer", list(voices))
         instant = st.checkbox("Show short feedback after each answer", value=False,
                               help="Off = like a real interview. Full feedback is always in the final report.")
 
     if st.button("🚀 Start interview", type="primary"):
         role = custom_role.strip() if role_choice == ai.OTHER_ROLE else role_choice
+        lang = ai.LANGUAGES[lang_name]["code"]
         if not role:
             st.warning("Please type the job role first.")
         else:
             try:
                 with st.spinner("Preparing your first question..."):
                     client = get_groq_client()
-                    q1 = ai.generate_first_question(client, role, level, total)
-                voice_id, male = ai.VOICES[voice_name]
+                    q1 = ai.generate_first_question(client, role, level, total, lang)
+                voice_id, male = voices[voice_name]
                 st.session_state["ai"] = {
-                    "stage": "interview", "role": role, "level": level, "total": total,
+                    "stage": "interview", "role": role, "level": level, "total": total, "lang": lang,
                     "voice_id": voice_id, "male": male, "name": voice_name.split(" - ")[0],
                     "instant": instant, "questions": [q1], "answers": [], "idx": 0,
                     "audio": {}, "played": -1, "replay": False, "last_feedback": "",
@@ -155,10 +158,10 @@ elif S["stage"] == "interview":
                     fh.write(rec.getvalue())
                 with st.spinner("Listening to your answer..."):
                     client = get_groq_client()
-                    res = ai.analyze_answer_audio(client, path)
+                    res = ai.analyze_answer_audio(client, path, S["lang"])
                     remaining = total - (idx + 1)
                     ev = ai.evaluate_and_next(client, S["role"], S["level"], S["answers"],
-                                              question, res["transcript"], remaining)
+                                              question, res["transcript"], remaining, S["lang"])
                 S["answers"].append({"question": question, **res,
                                      **{k: v for k, v in ev.items() if k != "next_question"}})
                 S["last_feedback"] = ev["feedback"]
@@ -167,7 +170,7 @@ elif S["stage"] == "interview":
                     S["idx"] += 1
                 else:
                     with st.spinner("Preparing your report..."):
-                        S["report"] = ai.build_final_report(client, S["answers"], S["role"], S["level"])
+                        S["report"] = ai.build_final_report(client, S["answers"], S["role"], S["level"], S["lang"])
                     S["stage"] = "done"
                 done = True
             except Exception as exc:
@@ -180,7 +183,7 @@ elif S["stage"] == "interview":
         if finish:
             try:
                 with st.spinner("Preparing your report..."):
-                    S["report"] = ai.build_final_report(get_groq_client(), S["answers"], S["role"], S["level"])
+                    S["report"] = ai.build_final_report(get_groq_client(), S["answers"], S["role"], S["level"], S["lang"])
                 S["stage"] = "done"
             except Exception as exc:
                 st.error(f"❌ {exc}")
@@ -205,6 +208,10 @@ else:
     st.caption("Audio-only mode: there is no face score, so the total is rescaled to 100 "
                f"(raw {r['raw_score']}/{r['max_raw']}).")
 
+    if r.get("language") == "hi":
+        st.caption("Hindi mode: filler words are counted with a Hindi word list. The speaking-speed targets and "
+                   "the voice model were designed for English, so treat those two scores as approximate.")
+
     m = st.columns(5)
     m[0].metric("🗣️ Filler words", f"{sc['filler']}/25")
     m[0].caption(f"{r['filler']['total_fillers']} filler words")
@@ -225,7 +232,7 @@ else:
         if st.button("🔄 Regenerate AI feedback"):
             try:
                 with st.spinner("Asking the AI again..."):
-                    S["report"] = ai.build_final_report(get_groq_client(), r["answers"], r["role"], r["level"])
+                    S["report"] = ai.build_final_report(get_groq_client(), r["answers"], r["role"], r["level"], r.get("language", "en"))
             except Exception as exc:
                 st.error(f"❌ {exc}")
             else:
@@ -244,7 +251,8 @@ else:
     for i, a in enumerate(r["answers"], 1):
         with st.expander(f"Q{i}: {a['question']}  -  relevance {a.get('relevance_score', '-')}/10"):
             st.markdown(f"**Your answer:** {a['transcript']}")
-            st.caption(f"{a['wpm']} WPM · {a['fillers']} filler words · {a['duration']:.0f}s")
+            st.caption(f"{a['wpm']} WPM · {a['fillers']} filler words · {a['duration']:.0f}s"
+                       + (f" · transcribed with {a['asr_model']}" if a.get("asr_model") else ""))
             st.markdown(f"**Feedback:** {a.get('feedback', '')}")
             if a.get("improvement_tip"):
                 st.markdown(f"**Tip:** {a['improvement_tip']}")
