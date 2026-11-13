@@ -23,3 +23,5 @@ dist/
 models_backup/
 filler_out/
 transcripts.csv
+freeze_*.txt
+*_backup.pkl

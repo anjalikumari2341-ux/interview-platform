@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import cv2
 import pickle
+
+import joblib
 import numpy as np
 
 # ── Model paths ───────────────────────────────────────────────────────────────
@@ -43,9 +45,10 @@ def _get_face_models():
     global _face_model, _face_scaler, _face_pca
     if _face_model is None:
         try:
-            with open(_FACE_MODEL,  "rb") as f: _face_model  = pickle.load(f)
-            with open(_FACE_SCALER, "rb") as f: _face_scaler = pickle.load(f)
-            with open(_FACE_PCA,    "rb") as f: _face_pca    = pickle.load(f)
+            # joblib.load reads files saved with joblib.dump (the training scripts) and plain pickles
+            _face_model  = joblib.load(_FACE_MODEL)
+            _face_scaler = joblib.load(_FACE_SCALER)
+            _face_pca    = joblib.load(_FACE_PCA)
         except FileNotFoundError as exc:
             raise RuntimeError(
                 f"Facial model files not found in {_MODEL_DIR}.\n"
@@ -257,6 +260,7 @@ def analyze_video(video_path: str, sample_every: int = 10) -> dict:
     facial_confidence     = "not_confident"
     facial_confidence_pct = 0.0
     model_used            = False
+    model_error           = ""
 
     if face_crops:
         try:
@@ -272,7 +276,8 @@ def analyze_video(video_path: str, sample_every: int = 10) -> dict:
             facial_confidence = "confident" if avg_conf_prob >= 0.5 else "not_confident"
             facial_confidence_pct = round(avg_conf_prob * 100, 1)
             model_used        = True
-        except Exception:
+        except Exception as exc:
+            model_error = f"{type(exc).__name__}: {str(exc)[:200]}"
             # Geometric fallback
             geo_score             = (stability + eye_contact) / 2.0
             facial_confidence     = "confident" if geo_score >= 55 else "not_confident"
@@ -292,6 +297,10 @@ def analyze_video(video_path: str, sample_every: int = 10) -> dict:
         "face_detected_frames":   face_detected,
         "mediapipe_available":    MEDIAPIPE,
         "model_used":             model_used,
+        "face_model_error":       model_error,
+        # False = the number above is only a placeholder default (no face landmarks were tracked)
+        "head_stability_measured": len(nose_positions) > 2,
+        "eye_contact_measured":    bool(yaw_offsets),
     }
 
 
@@ -307,4 +316,7 @@ def _empty_result(mediapipe: bool) -> dict:
         "face_detected_frames":   0,
         "mediapipe_available":    mediapipe,
         "model_used":             False,
+        "face_model_error":       "",
+        "head_stability_measured": False,
+        "eye_contact_measured":    False,
     }

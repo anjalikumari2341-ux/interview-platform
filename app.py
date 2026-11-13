@@ -484,8 +484,10 @@ if "report" in st.session_state:
     fc1, fc2, fc3, fc4 = st.columns(4)
     face_color = "#00C851" if va.get("facial_confidence") == "confident" else "#FF4444"
     with fc1: st.metric("Face Detected",      f"{va['face_detection_rate']}%")
-    with fc2: st.metric("Head Stability",     f"{va['head_stability']}/100")
-    with fc3: st.metric("Eye Contact",        f"{va['eye_contact_score']}/100")
+    head_ok = va.get("head_stability_measured", True)
+    eye_ok  = va.get("eye_contact_measured", True)
+    with fc2: st.metric("Head Stability",     f"{va['head_stability']}/100" if head_ok else "Not measured")
+    with fc3: st.metric("Eye Contact",        f"{va['eye_contact_score']}/100" if eye_ok else "Not measured")
     with fc4:
         st.markdown(
             f'<div style="text-align:center;padding-top:8px;">'
@@ -497,12 +499,20 @@ if "report" in st.session_state:
             unsafe_allow_html=True,
         )
 
+    if not va.get("model_used", True):
+        st.warning("⚠️ The facial-expression model did not produce a prediction for this video, so the "
+                   "facial confidence shown here is only a rough placeholder and should not be trusted."
+                   + (f" (Reason: {va['face_model_error']})" if va.get("face_model_error") else ""))
+    if not (head_ok and eye_ok):
+        st.info("Head stability and eye contact could not be measured for this video (face-landmark "
+                "tracking was unavailable), so they are not shown. The facial confidence score comes "
+                "from the facial-expression model only.")
     face_tips: list[str] = []
     if va["face_detection_rate"] < 70:
         face_tips.append("📷 Ensure your face is fully visible and well-lit.")
-    if va["head_stability"] < 55:
+    if head_ok and va["head_stability"] < 55:
         face_tips.append("🧘 Minimise head movements to appear composed.")
-    if va["eye_contact_score"] < 55:
+    if eye_ok and va["eye_contact_score"] < 55:
         face_tips.append("👀 Look directly into the camera lens.")
     if va.get("facial_confidence") == "not_confident":
         face_tips.append("😊 Maintain a calm, positive expression throughout.")
